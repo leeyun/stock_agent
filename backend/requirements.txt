@@ -1,0 +1,35 @@
+# -----------------------------------
+# Real-time Crawling and Queuing
+# -----------------------------------
+beautifulsoup4==4.12.3
+requests==2.34.2
+Scrapy==2.11.1
+celery==5.3.6
+redis==5.0.3
+# -----------------------------------
+# 공통 백엔드 및 인프라
+# -----------------------------------
+Django==5.2.17
+python-dotenv==1.2.3
+daphne==4.2.3
+channels==4.3.2
+channels-redis==4.3.0
+djangorestframework==3.18.0
+django-cors-headers==4.9.0
+drf-spectacular==0.30.0
+django-rest-framework-docs==0.1.7
+djangorestframework-simplejwt==5.5.1
+psycopg2-binary==2.9.12
+pgvector==0.5.0
+# -----------------------------------
+# AI API 및 라이브러리
+# -----------------------------------
+google-generativeai==0.8.6
+google-genai==2.24.0
+langchain==1.4.0
+langchain-text-splitters==1.1.2
+# -----------------------------------
+# finance library
+# -----------------------------------
+yfinance==1.7.0
+finance-datareader==0.9.202
