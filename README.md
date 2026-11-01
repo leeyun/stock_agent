@@ -1,4 +1,5 @@
 # Trender
+[Trender 웹사이트 바로가기](https://pearlie-overfervent-nonimputatively.ngrok-free.dev/)
 
 Trender는 관심종목의 시세와 관련 뉴스를 한 화면에서 보여주는 주식 뉴스 분석 웹 서비스입니다. 관심종목 뉴스를 주기적으로 수집하고, Gemini로 기사마다 3줄 요약, 호재/악재/중립 판단, 판단 근거, 종목 관련도를 만들어 저장합니다.
 
