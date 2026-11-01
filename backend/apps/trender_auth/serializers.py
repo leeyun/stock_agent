@@ -31,6 +31,10 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at")
 
 
+class GoogleLoginSerializer(serializers.Serializer):
+    id_token = serializers.CharField()
+
+
 class LoginSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)

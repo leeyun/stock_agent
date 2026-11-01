@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -10,7 +11,8 @@ from drf_spectacular.utils import (
 )
 from rest_framework import generics, serializers, status
 
-from .serializers import LoginSerializer, SignupSerializer, UserSerializer
+from . import google
+from .serializers import GoogleLoginSerializer, LoginSerializer, SignupSerializer, UserSerializer
 
 User = get_user_model()
 
@@ -88,6 +90,75 @@ class SignupView(generics.CreateAPIView):
 class LoginView(TokenObtainPairView):
     serializer_class   = LoginSerializer
     permission_classes = [AllowAny]
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=["auth"],
+        summary="Google 로그인 설정 조회",
+        description="프론트가 Google 로그인 버튼을 띄울 때 쓸 OAuth 클라이언트 ID. 비어 있으면 Google 로그인 비활성.",
+        responses={200: inline_serializer(name="GoogleConfigResponse",
+                                          fields={"client_id": serializers.CharField()})},
+    ),
+    post=extend_schema(
+        tags=["auth"],
+        summary="Google 로그인",
+        description=(
+            "Google ID 토큰을 검증하고 JWT를 발급한다. 같은 이메일 계정이 있으면 그 계정으로 로그인하고, "
+            "없으면 계정을 새로 만든다(201, 비밀번호 없이 Google로만 로그인)."
+        ),
+        request=GoogleLoginSerializer,
+        responses={
+            200: inline_serializer(
+                name="GoogleLoginResponse",
+                fields={
+                    "user": UserSerializer(),
+                    "access": serializers.CharField(),
+                    "refresh": serializers.CharField(),
+                    "created": serializers.BooleanField(),
+                },
+            ),
+            201: OpenApiResponse(description="새 계정 생성 후 로그인 (응답 형식은 200과 같음)"),
+            400: OpenApiResponse(description="토큰 누락"),
+            401: OpenApiResponse(description="토큰 검증 실패 또는 이메일 미확인 계정"),
+            403: OpenApiResponse(description="비활성화된 계정"),
+            503: OpenApiResponse(description="서버에 GOOGLE_CLIENT_ID 미설정"),
+        },
+    ),
+)
+class GoogleLoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        return Response({"client_id": settings.GOOGLE_CLIENT_ID})
+
+    def post(self, request):
+        if not settings.GOOGLE_CLIENT_ID:
+            return Response({"detail": "Google 로그인이 설정되지 않았습니다."},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        serializer = GoogleLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            claims = google.verify_id_token(serializer.validated_data["id_token"])
+        except google.GoogleAuthError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user, created = google.get_or_create_user(claims)
+        if not user.is_active:
+            return Response({"detail": "비활성화된 계정입니다."}, status=status.HTTP_403_FORBIDDEN)
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "user":    UserSerializer(user).data,
+                "access":  str(refresh.access_token),
+                "refresh": str(refresh),
+                "created": created,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 @extend_schema(

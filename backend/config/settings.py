@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from datetime import timedelta
 from celery.schedules import crontab
+from corsheaders.defaults import default_headers
 
 # ==============================================================================
 # 0. 필수 설정 및 기본 경로 (BASICS)
@@ -131,15 +132,28 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
+# Google 로그인 OAuth 클라이언트 ID (웹 애플리케이션 유형). 비어 있으면 Google 로그인 비활성
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
 ## CSRF 신뢰 출처. ngrok 은 스킴(https://)까지 포함해야 하며 ALLOWED_HOSTS 와 문법이 다름
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "https://*.ngrok-free.app",
+    "https://*.ngrok-free.dev",
+    "https://*.ngrok.app",
+    "https://*.ngrok.dev",
 ]
+
+# Django가 서빙할 Flutter Web 빌드 위치 (config/frontend.py)
+FRONTEND_BUILD_DIR = BASE_DIR.parent / "frontend" / "build" / "web"
 
 # Ngrok 같은 프록시 서버가 씌워준 HTTPS를 장고가 믿도록 설정
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Django 기본값(same-origin)이면 Google 로그인 팝업(accounts.google.com/gsi/transform)이
+# 결과를 원래 창으로 돌려주지 못해 흰 화면에서 멈춘다. Django가 웹을 서빙할 때(config/frontend.py) 필요.
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin-allow-popups"
 
 # 호스트 Ngrok 도메인으로 인식하게 설정
 USE_X_FORWARDED_HOST = True
@@ -204,10 +218,18 @@ REST_FRAMEWORK = {
 
 # CORS 세부 설정
 CORS_ALLOW_CREDENTIALS = True
+# Flutter Web 배포 주소는 .env의 CORS_ALLOWED_ORIGINS에 콤마로 구분해 추가 (예: https://trender.example.com)
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
 ]
+# flutter run -d chrome 은 매번 임의 포트로 뜨므로 개발 중에는 localhost 전 포트 허용
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
+] if DEBUG else []
+# ngrok 경유 시 브라우저 경고 페이지 우회 헤더 (lib/core/network/api_client.dart)
+CORS_ALLOW_HEADERS = (*default_headers, "ngrok-skip-browser-warning")
 
 # JWT 설정
 SIMPLE_JWT = {
@@ -265,13 +287,18 @@ CELERY_BEAT_SCHEDULE = {
     },
     "collect-news-hourly": {
         "task": "apps.trender_news.tasks.collect_news_task",
-        # 기사 1건당 Gemini 호출 1번 + 4.2초 대기가 들어가서 시세보다 훨씬 낮은 빈도로 실행
+        # 기사 1건당 Gemini 호출이 들어가서 시세보다 훨씬 낮은 빈도로 실행 (이미 저장된 기사는 재분석하지 않음)
         "schedule": crontab(minute=0, hour="9-16", day_of_week="mon-fri"),  # 평일 장중 매시 정각
     },
 }
 
-# Ollama AI API 설정 (환경변수 미설정 시 기본값 fallback)
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+# Gemini 뉴스 분석 설정 (core/llm/news_analyzer.py)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GEMINI_RPM = int(os.getenv("GEMINI_RPM", "15"))  # 요금제의 분당 요청 한도에 맞출 것
+
+# 뉴스 파이프라인(core/graph/news_pipeline.py)에서 동시에 실행할 브랜치 수
+NEWS_PIPELINE_CONCURRENCY = int(os.getenv("NEWS_PIPELINE_CONCURRENCY", "4"))
 
 # FIXED: InMemoryChannelLayer 는 CONFIG.hosts 를 사용하지 않아 Redis 설정이 무의미하고,
 #        프로세스 하나 안에서만 동작해서 Celery 워커 → WebSocket 푸시가 불가능합니다.

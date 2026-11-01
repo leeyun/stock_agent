@@ -1,6 +1,6 @@
 """크롤링+Gemini 분석이 끝난 기사 dict를 News/StockNews에 저장하는 공용 로직.
 
-`import_trained_news`(파일에서 읽어 저장)와 `collect_news`(그 자리에서 수집→분석→저장)
+`import_trained_news`(파일에서 읽어 저장)와 뉴스 파이프라인(core/graph/news_pipeline.py의 save 노드)
 둘 다 이 함수를 통해 같은 방식으로 저장한다.
 """
 import logging
@@ -29,7 +29,7 @@ def parse_pub_date(pub_date_str):
 def save_analyzed_article(item, stock_cache=None):
     """분석이 끝난 기사 하나를 News/StockNews에 저장한다.
 
-    item: crawler.py가 만든 dict + llm_analysis(teacher_model.generate_training_data 결과) 포함.
+    item: crawler.py가 만든 dict + llm_analysis({summary, sentiment_code, reason, relevance?}) 포함.
     stock_cache: {keyword: Stock|None} 캐시. 여러 건을 반복 처리할 때 넘기면 중복 조회를 줄인다.
 
     반환값: (news, created) 또는 저장 못 했으면 None.
@@ -68,9 +68,9 @@ def save_analyzed_article(item, stock_cache=None):
         stock=stock, news=news,
         defaults={
             "sentiment": analysis.get("sentiment_code"),
-            # TODO: 지금은 "이 종목 키워드로 검색해서 나온 기사"라는 것 자체를 관련도로
-            # 간주해 고정값을 씀 — 실제 관련도 스코어링이 생기면 교체할 것.
-            "relevance": 1.0,
+            # 뉴스 파이프라인은 Gemini가 매긴 관련도를 넘긴다. 예전 분석 파일(import_trained_news)에는
+            # 관련도가 없으므로 "이 종목 키워드로 검색된 기사"라는 의미로 1.0을 쓴다.
+            "relevance": analysis.get("relevance", 1.0),
             "reason": analysis.get("reason", ""),
             "classified_at": timezone.now(),
         },
